@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 import json
 import pandas as pd
 import fnmatch
@@ -6,23 +7,25 @@ import bz2
 import pickle
 import argparse
 import gc
+from pprint import pprint
 
 # read files in list and convert to pandas dataframes
-def load_files(files, file_format):
+def load_files(files):
     dfs = {}
     for file in files:
         # check file format and read appropriately
-        if file_format == ".json":
+        if file.endswith('json'):
             f = open(file, 'rb')
         else:
             f = bz2.BZ2File(file, 'rb')
+
         jsons = json.load(f)
         f.close()
 
         # iterate through packets in file
         for pkt in jsons:
             # create a new dataframe with packet timestamp and values
-            df = pd.DataFrame.from_dict(pkt["y"])
+            df = pd.DataFrame.from_dict(pkt["values"])
             df = df.rename( columns={0:"ds", 1:"y"})
             df["ds"] = pd.to_datetime(df["ds"], unit='s')
             df = df.sort_values(by=["ds"])
@@ -67,20 +70,21 @@ def load_checkpoint(file):
     return pds
 
 # load all files and convert to a list of pandas dataframes
-def convert_to_pandas(files, file_format, batch_size):
+def convert_to_pandas(files, batch_size):
     checkpoints = []
     # # separate files into batches
     batches = [files[batch_size*i:batch_size*(i+1)] for i in range(int(len(files)/batch_size) + 1)]
-    print("num_batches", len(batches))
+    print("Batches: ", len(batches))
     i = 0
     for batch in batches:
-        print(i)
+        print("Load batch %i" % i, end="\r")
         i += 1
         # get new portion of dataframes and add to master set
-        pds_new = load_files(batch, file_format)
+        pds_new = load_files(batch)
         cp = save_checkpoint(pds_new, "raw_" + str(i))
         checkpoints.append(cp)
         gc.collect()
+    print("Loaded %i batches" % i)
 
     pds = []
     # iterate checkpoint by checkpoint and add data to unique collection
@@ -89,9 +93,8 @@ def convert_to_pandas(files, file_format, batch_size):
     i = 0
     for cp in checkpoints:
         i += 1
-        print(i)
+        print("Processing batch %i" % i, end="\r")
         pds_new = load_checkpoint(cp)
-        print(i)
         # load data in batches and combine dataframes
         for f in collapsed_fs:
             pds = load_checkpoint(f)
@@ -100,52 +103,32 @@ def convert_to_pandas(files, file_format, batch_size):
             gc.collect()
         if len(pds_new) > 0:
             f_new = save_checkpoint(pds_new, "collapsed_" + str(i)) 
-            print("Generated ", f_new)
+            # print("Generated ", f_new)
             collapsed_fs.append(f_new)   
-        print(i)
         gc.collect()
+    print("Processed %i batches" % i)
     return pds
 
-# get all appropriately formatted files in a folder
-def retrieve_filenames(path, file_format):
-    filenames = []
-    for file in os.listdir(path):
-            # check if this file has correct ending (regex)
-            if fnmatch.fnmatch(file, "*" + file_format):
-                f_name = path + file
-                filenames.append(f_name)
-    return filenames
-
 # get main input arguments and return formatted data
-def read_input(data_folder, metric, file_format, batch_size):
+def read_input(data_folder, metric, batch_size):
     # metric-specific data folder
-    folder = data_folder + metric + "/"
-    # get all files in folder
-    files = os.listdir(folder)
+    folder = os.path.join(data_folder, metric)
 
-    # automatically detect metric type
-    if "quantile" in files:
-        metric_type = "summary"
-        label = "quantile"
-        filenames = retrieve_filenames(folder + "/quantile/", file_format)
-        filenames_count = retrieve_filenames(folder + "/count/", file_format)
-        filenames_sum = retrieve_filenames(folder + "/sum/", file_format)
-    elif "bucket" in files:
-        metric_type = "histogram"
-        label = "le"
-        filenames = retrieve_filenames(folder + "/bucket/", file_format)
-        filenames_count = retrieve_filenames(folder + "/count/", file_format)
-        filenames_sum = retrieve_filenames(folder + "/sum/", file_format)
-    else:
-        metric_type = "counter/gauge"
-        label = ""
-        filenames = retrieve_filenames(folder, file_format)
-    
-    pd_frames = convert_to_pandas(filenames, file_format, batch_size)
+    # get all files in folder
+    files = []
+    for root, d_names, f_names in os.walk(folder):
+        for f in f_names:
+            if f.endswith('bz2') or f.endswith('json'):
+                files.append(os.path.join(root, f))
+    files.sort()
+    print("Processing %s files" % len(files))
+
+    pd_frames = convert_to_pandas(files, batch_size)
 
     return pd_frames
 
 # remove all temp pickle files generated during this program
+# TODO: use tempfiles for temporary files
 def combine_checkpoints(master_file):
     df = {}
     files = os.listdir()
@@ -165,14 +148,13 @@ def combine_checkpoints(master_file):
     pickle.dump(df, f)
     f.close()
 
-
-
 def main():
     print("Formatting Data")
-    pd_frames = read_input(args.input, args.metric, args.format, args.batch_size)
+    pd_frames = read_input(args.input, args.metric, args.batch_size)
     print("Conversion successful")
 
-    master_file = args.output + args.metric
+    os.makedirs(args.output)
+    master_file = os.path.join(args.output, args.metric)
 
     combine_checkpoints(master_file)
 
@@ -183,8 +165,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="format time series data into an array of pandas dataframes. input folder architecture: input folder must contain a folder with the metric name. Inside the metric folder will be sum/, count/, quant/, or bucket/ according to the metric_type. ex: data/metric_name/files. data/ is input directory")
 
     parser.add_argument("--metric", type=str, help='metric name', required=True)
-
-    parser.add_argument("--format", default='.json.bz2', help='choose input file format (.json.bz2 or .json)')
 
     parser.add_argument("-i", "--input", default='', help='input directory')
 
