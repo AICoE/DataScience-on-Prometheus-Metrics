@@ -38,7 +38,7 @@ A given time series is assigned a unique metadata label configuration which incl
 
 One of the default labels that occurs in every metric and metadata packet is the instance. The instance is an ip which corresponds to the scraped target. However, these ip addresses are refreshed over time. In the graphs below, we can see that certain instances pop up and go away at different times. Because the instance change typically results from one or two targets going down, most instances are re-assigned simultaneously which means that we cannot pinpoint the continuity between the old and new instance labels.
 
-Metadata analysis scripts can be found in [this folder](https://github.com/nfrumkin/forecast-prometheus/tree/master/metadata_analysis).
+Metadata analysis scripts can be found in [this folder](metadata_analysis/).
 ![](imgs/metadata_instance_label_kubelet_docker.png)
 **Graph 1:** instance values over time for all targets of kubelet_docker_operation_latency_microseconds_quantile. Every value on the y-axis corresponds to a specific instance ip address (ex: ip-172-31-70-31.us-east-2.compute.internal)
 
@@ -53,7 +53,7 @@ Metadata analysis scripts can be found in [this folder](https://github.com/nfrum
 #### T-SNE Embedding of dataset
 T-sne embedding is a dimensionality reduction technique used for mapping high dimensional data into a lower dimension for visualization. In this case, our dimensions are labels in the metadata. We use a standard t-sne package from sci-kit learn and represented our categorical data in terms of numerical values from 1 to len(label values). The result is shown below.
 
-[Here](https://github.com/nfrumkin/forecast-prometheus/blob/master/metadata_analysis/t_sne_for_metadata.py) is the script for generating these visualizations.
+[Here](metadata_analysis/t_sne_for_metadata.py) is the script for generating these visualizations.
 ![](imgs/t_sne_embedding2.png)
 **Graph 4:** t-sne embedding for all data points in kubelet_docker_operation_latency_microseconds_quantile. Note that the data seems to be clustered in some way.
 ![](imgs/t-sne_embedding.png)
@@ -70,21 +70,13 @@ I designed a script that will convert a collection of json files in a specified 
 
 
 `data_dictionary = pickle.load(my_output_file)`
-
-
 `data_dictionary["{'__name__': 'kubelet_docker_operations_latency_microseconds','beta_kubernetes_io_arch': 'amd64'..."]`
-
-**Run Pre-processing using the sample Bash Script**
-
-`./run_formatter`
 
 **Or Manually using the Command Line Arguments**
 
-`python format_to_pandas.py --metric METRIC --format FORMAT --input INPUT_DIR --output OUTPUT_DIR`
+`python format_to_pandas.py --metric METRIC --input INPUT_DIR --output OUTPUT_DIR`
 
-for more information about the command line arguments, use the help message
-
-`python format_to_pandas.py --help`
+for more information about the command line arguments, use the help message `./format_to_pandas.py --help` or have a look at the [sample run](format_to_pandas.py) on sample data.
 
 
 [this](https://docs.google.com/spreadsheets/d/1CB14X5xd1dPH2x9m_ko_2rfz6BrilPZPYcJA_kQWBUo/edit?usp=sharing) spreadsheet has a working list of metrics and their associated data sparsity
@@ -93,23 +85,23 @@ for more information about the command line arguments, use the help message
 ![](imgs/forecasting_data.png)
 **Graph 6:** A time series from kubelet_docker_operations_latency_microseconds with the following metadata: *{'name': 'http_request_duration_microseconds', 'app': 'openshift-web-console', 'handler': 'prometheus', 'instance': '10.129.0.18:8443', 'job': 'kubernetes-service-endpoints', 'kubernetes_name': 'webconsole', 'kubernetes_namespace': 'openshift-web-console', 'quantile': '0.9'}*
 #### Exponential Smoothing
-[This notebook](https://github.com/nfrumkin/forecast-prometheus/blob/master/notebooks/Exponential%20Smoothing%20and%20ARIMA%20on%20Real%20Data.ipynb) has an introduction to Exponential Smoothing and a few examples.
+[This notebook](notebooks/Exponential%20Smoothing%20and%20ARIMA%20on%20Real%20Data.ipynb) has an introduction to Exponential Smoothing and a few examples.
 The implementation for this model came from the [statsmodels python package](http://www.statsmodels.org/dev/tsa.html)
 ![](imgs/exp_smoothing3.png)
 **Graph 7:** Exponential Smoothing on a Time Series. Note that the forecast (yhat) remains the same as the last training value. This means that we do not take into account the seasonality or volatility of the series using this model.
 #### ARIMA Modelling
-[This notebook](https://github.com/nfrumkin/forecast-prometheus/blob/master/notebooks/ARIMA%20modelling.ipynb) has an introduction to ARIMA and a few examples of ARIMA modelling.
+[This notebook](notebooks/ARIMA%20modelling.ipynb) has an introduction to ARIMA and a few examples of ARIMA modelling.
 The implementation for this model came from the [statsmodels python package](http://www.statsmodels.org/dev/tsa.html).
 ![](imgs/arima3.png)
 **Graph 8:** ARIMA Modelling on a Time Series. Note that the forecast (yhat) decays to the median very quickly. It seems that this model does not take into account the seasonality of the data. For this example, we used ARIMA(1,0,1).
 #### Prophet Modelling
-[This notebook](https://github.com/nfrumkin/forecast-prometheus/blob/master/notebooks/Prophet%20Model%20Forecasting.ipynb) has an introduction to Prophet and a few examples of Prophet modelling.[Here](https://peerj.com/preprints/3190.pdf) is Facebook's paper on Prophet modelling
+[This notebook](notebooks/Prophet%20Model%20Forecasting.ipynb) has an introduction to Prophet and a few examples of Prophet modelling.[Here](https://peerj.com/preprints/3190.pdf) is Facebook's paper on Prophet modelling
 ![](imgs/prophet.png)
 **Graph 9:** Prophet Modelling on a Time Series. Note that the model seems to train according to trend, and the bounds (yhat_upper and yhat_lower) are reasonably accurate. This specific example likely provides too little data for Prophet to detect anomalies accurately.
 ![](imgs/prophet3.png)
 **Graph 10:** Prophet Modelling on a Time Series from kubelet_docker_operations_latency_microseconds. Notice how there are large gaps in the training and testing data. This is characteristic of many of the time series we get from Prometheus because there are often dead times in the systems. Prophet seems to handle these gaps pretty well.
 #### Fourier Extrapolation
-[This notebook](https://github.com/nfrumkin/forecast-prometheus/blob/master/notebooks/Fourier%20Analysis%20Forecasting.ipynb) has an introduction to Fourier Analysis and a few examples.
+[This notebook](notebooks/Fourier%20Analysis%20Forecasting.ipynb) has an introduction to Fourier Analysis and a few examples.
 ![](imgs/fourier3.png)
 **Graph 11:** Fourier Extrapolation on a Time Series. Note that this model does an excellent job of reproducing the seasonality of the training set. It responds very well when there is a clear pattern in the data.
 ![](imgs/fourier4.png)
@@ -127,7 +119,7 @@ Comparing Prophet and Fourier
 * Generalization to additional metrics
 * Verification from domain experts
 ## **Anomaly Detection Decision Rules**<a name="ad"></a>
-[This notebook](https://github.com/nfrumkin/forecast-prometheus/blob/master/notebooks/Anomaly%20Detection%20Decision%20Rules.ipynb) provides details on our anomaly detection decision rules that we've employed.
+[This notebook](notebooks/Anomaly%20Detection%20Decision%20Rules.ipynb) provides details on our anomaly detection decision rules that we've employed.
 
 ## **Anomaly Detection for Histograms and Summaries** <a name="ad-hist-summ"></a>
 #### **Histogram and Summary Visualization**
